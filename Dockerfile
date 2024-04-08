@@ -1,6 +1,8 @@
 FROM ubuntu:jammy
 
 COPY bomgar-jpt-*.bin ./
+# Save name for later
+RUN echo /bomgar-jpt-* >> /.installer-name
 
 RUN apt-get update
 
@@ -48,10 +50,19 @@ category.ALL=Warning \n\
 # jpt user
 RUN useradd -ms /bin/bash jpt
 
-# install
 ENV BT_VERBOSE_INSTALLER 1
-RUN sh bomgar-jpt-*.bin --install-dir /jpt --user jpt
+RUN head -n $(($(grep -an "^INSTALL" bomgar-jpt-* | head -1 | cut -f1 -d':') - 1)) bomgar-jpt-* | sed -e 's/"$abs_script" | tar/\/bomgar-jpt-* | tar/g' > /tmp/unpack
+RUN chmod +x /tmp/unpack
+RUN /tmp/unpack
+RUN find /tmp -name install_after_unpack | xargs dirname | xargs -I{} mv {} /tmp/jpt
+RUN cat /tmp/jpt/install_after_unpack | sed -e 's/--setup/--test/g' > /tmp/install_partial
+RUN cp -f /tmp/install_partial /tmp/jpt/install_after_unpack
+ENV UNPACK_DIR /tmp/jpt
+RUN /tmp/jpt/install_after_unpack --install-dir /jpt --user jpt
+
+# Cleanup
+RUN rm -rf /tmp/jpt /bomgar-jpt-* /tmp/install_partial /tmp/unpack
 
 # swap user and run jpt directly
 USER jpt
-CMD [ "/jpt/bomgar-jpt", "--restart-loop", "1000", "--service"]
+CMD [ "sh", "-c", "cat /.installer-name | xargs /jpt/bomgar-jpt --setup && /jpt/bomgar-jpt --restart-loop 1000 --service"]
