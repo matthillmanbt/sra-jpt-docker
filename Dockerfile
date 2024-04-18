@@ -63,6 +63,8 @@ RUN /tmp/jpt/install_after_unpack --install-dir /jpt --user jpt
 # Cleanup
 RUN rm -rf /tmp/jpt /bomgar-jpt-* /tmp/install_partial /tmp/unpack
 
+COPY jumpzone.ini /jpt/jumpzone.ini
+
 # swap user and run jpt directly
 USER jpt
 CMD [ "sh", "-c", "cat /.installer-name | xargs /jpt/bomgar-jpt --setup && /jpt/bomgar-jpt --restart-loop 1000 --service"]
