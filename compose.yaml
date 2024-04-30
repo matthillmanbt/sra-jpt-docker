@@ -1,0 +1,5 @@
+services:
+  jpt:
+    build:
+      context: .
+      dockerfile: Dockerfile

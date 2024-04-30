@@ -9,4 +9,8 @@ To use:
 3. docker build --tag <site>-jpt .
 4. Run image as desired
 
+OR
+
+3. docker compose up
+
 Note this does not configure/support Web Jump
