@@ -12,5 +12,3 @@ To use:
 OR
 
 3. docker compose up
-
-Note this does not configure/support Web Jump

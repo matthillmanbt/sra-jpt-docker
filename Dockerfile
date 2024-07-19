@@ -1,22 +1,34 @@
 FROM ubuntu:jammy
 
+RUN apt-get update
+
 COPY bomgar-jpt-*.bin ./
 # Save name for later
 RUN echo /bomgar-jpt-* >> /.installer-name
 
-RUN apt-get update
-
 # jpt dependencies
 RUN apt-get install -y curl libegl1 libglx0 libopengl0 libx11-6 libdbus-1-3 libfontconfig1 libfreetype6 libxkbcommon0
 RUN apt-get install -y libasound2 libxkbfile1
+RUN apt-get install -y libglib2.0-dev libnss3 libnspr4 libatk1.0-dev libatk-bridge2.0-dev libcups2-dev
+RUN apt-get install -y libxcomposite-dev libxdamage-dev libxrandr-dev libpango1.0-dev libcairo2 libatspi2.0-dev
+
+# web jump needs all this
+RUN apt-get -y install xserver-xorg-video-dummy x11-apps x11-xserver-utils
+
+RUN mkdir -p /tmp/.X11-unix
+RUN chmod 777 /tmp/.X11-unix
+
+COPY xorg.conf /etc/X11/xorg.conf
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DISPLAY=:1
 
 # Set the locale
 RUN apt-get install -y locales
-RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
-    locale-gen
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
 # Clean up APT
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -50,14 +62,14 @@ category.ALL=Warning \n\
 # jpt user
 RUN useradd -ms /bin/bash jpt
 
-ENV BT_VERBOSE_INSTALLER 1
+ENV BT_VERBOSE_INSTALLER=1
 RUN head -n $(($(grep -an "^INSTALL" bomgar-jpt-* | head -1 | cut -f1 -d':') - 1)) bomgar-jpt-* | sed -e 's/"$abs_script" | tar/\/bomgar-jpt-* | tar/g' > /tmp/unpack
 RUN chmod +x /tmp/unpack
 RUN /tmp/unpack
 RUN find /tmp -name install_after_unpack | xargs dirname | xargs -I{} mv {} /tmp/jpt
 RUN cat /tmp/jpt/install_after_unpack | sed -e 's/--setup/--test/g' > /tmp/install_partial
 RUN cp -f /tmp/install_partial /tmp/jpt/install_after_unpack
-ENV UNPACK_DIR /tmp/jpt
+ENV UNPACK_DIR=/tmp/jpt
 RUN /tmp/jpt/install_after_unpack --install-dir /jpt --user jpt
 
 # Cleanup
@@ -65,6 +77,15 @@ RUN rm -rf /tmp/jpt /bomgar-jpt-* /tmp/install_partial /tmp/unpack
 
 COPY jumpzone.ini /jpt/jumpzone.ini
 
+RUN cat > /start.sh <<-__eof__
+#!/bin/bash
+set -ex
+/usr/bin/X :1 vt1 +extension GLX +extension RANDR +extension RENDER -noreset -novtswitch -nolisten tcp -background none -config /etc/X11/xorg.conf &
+cat /.installer-name | xargs /jpt/bomgar-jpt --setup
+/jpt/bomgar-jpt --restart-loop 1000 --service
+__eof__
+RUN chmod a+x /start.sh
+
 # swap user and run jpt directly
 USER jpt
-CMD [ "sh", "-c", "cat /.installer-name | xargs /jpt/bomgar-jpt --setup && /jpt/bomgar-jpt --restart-loop 1000 --service"]
+CMD [ "sh", "-c", "/start.sh" ]
