@@ -18,7 +18,7 @@ RUN apt-get -y install xserver-xorg-video-dummy x11-apps x11-xserver-utils
 RUN mkdir -p /tmp/.X11-unix
 RUN chmod 777 /tmp/.X11-unix
 
-RUN cat > /etc/X11/xorg.conf <<-__eof__
+COPY <<__eof__  /etc/X11/xorg.conf
 Section "Device"
     Identifier "dummy_videocard"
     Driver "dummy"
@@ -92,30 +92,32 @@ ENV LC_ALL=en_US.UTF-8
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Config logging to stderr
-RUN echo $'[blog/common] \n\
-enabled=1 \n\
- \n\
-[blog/0] \n\
-enabled=1 \n\
-output=stderr \n\
-flush_interval=0 \n\
-category.ALL=Warning \n\
-'>> /etc/blog.ini
+COPY <<__eof__ /etc/blog.ini
+[blog/common]
+enabled=1
+
+[blog/0]
+enabled=1
+output=stderr
+flush_interval=0
+category.ALL=Warning
+__eof__
 
 # Swap to this for more verbose logging
-# RUN echo $'[blog/common] \n\
-# enabled=1 \n\
-#  \n\
-# [blog/0] \n\
-# enabled=1 \n\
-# output=stderr \n\
-# flush_interval=0 \n\
-# category.ALL=All \n\
-# category.SOCK*=Info \n\
-# category.NLS=Info \n\
-# category.MRS*=Info \n\
-# category.MSG_DSP=Info \n\
-# '>> /etc/blog.ini
+# COPY <<__eof__ /etc/blog.ini
+# [blog/common] \n\
+# enabled=1
+
+# [blog/0]
+# enabled=1
+# output=stderr
+# flush_interval=0
+# category.ALL=All
+# category.SOCK*=Info
+# category.NLS=Info
+# category.MRS*=Info
+# category.MSG_DSP=Info
+# __eof__
 
 # jpt user
 RUN useradd -ms /bin/bash jpt
@@ -134,7 +136,7 @@ RUN /tmp/jpt/install_after_unpack --install-dir /jpt --user jpt
 RUN rm -rf /tmp/jpt /bomgar-jpt-* /tmp/install_partial /tmp/unpack
 
 # Jumpzone proxy configuration
-RUN cat > /jpt/jumpzone.ini <<-__eof__
+COPY <<__eof__ /jpt/jumpzone.ini
 [General]
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; BeyondTrust Jump Zone Proxy Configuration ;
@@ -176,7 +178,7 @@ allow_http=1
 ;denyOnlyIPs=1.2.3.4,4.3.2.1/16
 __eof__
 
-RUN cat > /start.sh <<-__eof__
+COPY <<__eof__ /start.sh
 #!/bin/bash
 set -ex
 /usr/bin/X :1 vt1 +extension GLX +extension RANDR +extension RENDER -noreset -novtswitch -nolisten tcp -background none -config /etc/X11/xorg.conf &
