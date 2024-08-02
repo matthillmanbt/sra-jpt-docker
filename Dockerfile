@@ -1,22 +1,6 @@
 FROM ubuntu:jammy
 
-RUN apt-get update
-
 COPY bomgar-jpt-*.bin ./
-# Save name for later
-RUN echo /bomgar-jpt-* >> /.installer-name
-
-# jpt dependencies
-RUN apt-get install -y curl libegl1 libglx0 libopengl0 libx11-6 libdbus-1-3 libfontconfig1 libfreetype6 libxkbcommon0
-RUN apt-get install -y libasound2 libxkbfile1
-RUN apt-get install -y libglib2.0-dev libnss3 libnspr4 libatk1.0-dev libatk-bridge2.0-dev libcups2-dev
-RUN apt-get install -y libxcomposite-dev libxdamage-dev libxrandr-dev libpango1.0-dev libcairo2 libatspi2.0-dev
-
-# web jump needs all this
-RUN apt-get -y install xserver-xorg-video-dummy x11-apps x11-xserver-utils
-
-RUN mkdir -p /tmp/.X11-unix
-RUN chmod 777 /tmp/.X11-unix
 
 COPY <<__eof__  /etc/X11/xorg.conf
 Section "Device"
@@ -78,24 +62,8 @@ Section "ServerLayout"
 EndSection
 __eof__
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV DISPLAY=:1
-
-# Set the locale
-RUN apt-get install -y locales
-RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
-ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US:en
-ENV LC_ALL=en_US.UTF-8
-
-# Clean up APT
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
 # Config logging to stderr
 COPY <<__eof__ /etc/blog.ini
-[blog/common]
-enabled=1
-
 [blog/0]
 enabled=1
 output=stderr
@@ -103,37 +71,52 @@ flush_interval=0
 category.ALL=Warning
 __eof__
 
-# Swap to this for more verbose logging
-# COPY <<__eof__ /etc/blog.ini
-# [blog/common] \n\
-# enabled=1
+COPY <<__eof__ /start.sh
+#!/bin/bash
+set -ex
+/usr/bin/X :1 vt1 +extension GLX +extension RANDR +extension RENDER -noreset -novtswitch -nolisten tcp -background none -config /etc/X11/xorg.conf &
+cat /.installer-name | xargs /jpt/bomgar-jpt --setup
+/jpt/bomgar-jpt --restart-loop 1000 --service
+__eof__
 
-# [blog/0]
-# enabled=1
-# output=stderr
-# flush_interval=0
-# category.ALL=All
-# category.SOCK*=Info
-# category.NLS=Info
-# category.MRS*=Info
-# category.MSG_DSP=Info
-# __eof__
-
-# jpt user
-RUN useradd -ms /bin/bash jpt
-
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DISPLAY=:1
 ENV BT_VERBOSE_INSTALLER=1
-RUN head -n $(($(grep -an "^INSTALL" bomgar-jpt-* | head -1 | cut -f1 -d':') - 1)) bomgar-jpt-* | sed -e 's/"$abs_script" | tar/\/bomgar-jpt-* | tar/g' > /tmp/unpack
-RUN chmod +x /tmp/unpack
-RUN /tmp/unpack
-RUN find /tmp -name install_after_unpack | xargs dirname | xargs -I{} mv {} /tmp/jpt
-RUN cat /tmp/jpt/install_after_unpack | sed -e 's/--setup/--test/g' > /tmp/install_partial
-RUN cp -f /tmp/install_partial /tmp/jpt/install_after_unpack
 ENV UNPACK_DIR=/tmp/jpt
-RUN /tmp/jpt/install_after_unpack --install-dir /jpt --user jpt
 
-# Cleanup
-RUN rm -rf /tmp/jpt /bomgar-jpt-* /tmp/install_partial /tmp/unpack
+# Save name for later
+RUN echo /bomgar-jpt-* >> /.installer-name && \
+    apt-get update && \
+# jpt dependencies
+    apt-get install -y curl libegl1 libglx0 libopengl0 libx11-6 libdbus-1-3 libfontconfig1 libfreetype6 libxkbcommon0 && \
+    apt-get install -y libasound2 libxkbfile1 && \
+    apt-get install -y libglib2.0-dev libnss3 libnspr4 libatk1.0-dev libatk-bridge2.0-dev libcups2-dev && \
+    apt-get install -y libxcomposite-dev libxdamage-dev libxrandr-dev libpango1.0-dev libcairo2 libatspi2.0-dev && \
+# web jump needs all this
+    apt-get -y install xserver-xorg-video-dummy x11-apps x11-xserver-utils && \
+\
+    mkdir -p /tmp/.X11-unix && \
+    chmod 777 /tmp/.X11-unix && \
+# Set the locale
+    apt-get install -y locales && \
+    sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen && \
+# jpt user and unpack
+    useradd -ms /bin/bash jpt && \
+    head -n $(($(grep -an "^INSTALL" bomgar-jpt-* | head -1 | cut -f1 -d':') - 1)) bomgar-jpt-* | sed -e 's/"$abs_script" | tar/\/bomgar-jpt-* | tar/g' > /tmp/unpack && \
+    chmod +x /tmp/unpack && \
+    /tmp/unpack && \
+    find /tmp -name install_after_unpack | xargs dirname | xargs -I{} mv {} /tmp/jpt && \
+    cat /tmp/jpt/install_after_unpack | sed -e 's/--setup/--test/g' > /tmp/install_partial && \
+    cp -f /tmp/install_partial /tmp/jpt/install_after_unpack && \
+    /tmp/jpt/install_after_unpack --install-dir /jpt --user jpt && \
+# finish setup
+    chmod a+x /start.sh && \
+# Clean up
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
+    rm -rf /tmp/jpt /bomgar-jpt-* /tmp/install_partial /tmp/unpack
 
 # Jumpzone proxy configuration
 COPY <<__eof__ /jpt/jumpzone.ini
@@ -178,15 +161,6 @@ allow_http=1
 ;denyOnlyIPs=1.2.3.4,4.3.2.1/16
 __eof__
 
-COPY <<__eof__ /start.sh
-#!/bin/bash
-set -ex
-/usr/bin/X :1 vt1 +extension GLX +extension RANDR +extension RENDER -noreset -novtswitch -nolisten tcp -background none -config /etc/X11/xorg.conf &
-cat /.installer-name | xargs /jpt/bomgar-jpt --setup
-/jpt/bomgar-jpt --restart-loop 1000 --service
-__eof__
-RUN chmod a+x /start.sh
-
 # swap user and run jpt directly
 USER jpt
-CMD [ "sh", "-c", "/start.sh" ]
+CMD [ "/start.sh" ]
